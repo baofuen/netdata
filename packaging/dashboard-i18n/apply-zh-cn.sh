@@ -61,6 +61,24 @@ if [ "${DRY_RUN}" -eq 0 ] && [ "${UNINSTALL}" -eq 0 ]; then
     fi
   done
   command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; exit 2; }
+
+  # A malformed dictionary does not break the dashboard, it silently disables the localisation, so
+  # refuse to install one instead of shipping an English dashboard that looks applied.
+  if ! python3 -c '
+import json, sys
+try:
+    data = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception as error:
+    sys.exit("not valid JSON: %s" % error)
+if not isinstance(data, dict):
+    sys.exit("top level is %s, expected an object" % type(data).__name__)
+bad = [k for k, v in data.items() if not isinstance(v, str)]
+if bad:
+    sys.exit("values must all be strings, found: %s" % ", ".join(map(str, bad[:5])))
+' "${HERE}/${DICT_NAME}"; then
+    echo "error: ${HERE}/${DICT_NAME} must be a JSON object mapping strings to strings" >&2
+    exit 2
+  fi
 fi
 
 if [ "${UNINSTALL}" -eq 1 ]; then

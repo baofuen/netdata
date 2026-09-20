@@ -19,6 +19,14 @@
   var ATTRS = ['placeholder', 'title', 'aria-label', 'alt'];
   var dictionary = null;
 
+  // Text inside these elements is code or markup rather than wording. The dashboard's entry pages
+  // carry large inline scripts, so rewriting their text nodes would corrupt the page.
+  var SKIP_TAGS = { SCRIPT: true, STYLE: true, NOSCRIPT: true, IFRAME: true, TEXTAREA: true };
+
+  function isSkipped(element) {
+    return !!(element && element.tagName && SKIP_TAGS[element.tagName]);
+  }
+
   // Resolve the directory this script was served from, so the dictionary is found in an agent
   // served under a sub-path just as well as one served from the root.
   var baseUrl = (function () {
@@ -56,11 +64,18 @@
   }
 
   function translateSubtree(element) {
-    if (!element || element.nodeType !== 1) return;
+    if (!element || element.nodeType !== 1 || isSkipped(element)) return;
 
     translateAttributes(element);
 
-    var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null);
+    var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+      acceptNode: function (node) {
+        var element = node.nodeType === 3 ? node.parentNode : node;
+        // Rejecting an element prunes its whole subtree.
+        return isSkipped(element) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
     var node;
     while ((node = walker.nextNode())) {
       if (node.nodeType === 3) translateTextNode(node);
