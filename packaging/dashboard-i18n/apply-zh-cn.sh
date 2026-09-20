@@ -116,12 +116,35 @@ web_dir, dry_run, uninstall, marker, script_name = (
 )
 web_dir = os.path.abspath(web_dir)
 start_tag = "<!-- %s -->" % marker
+end_tag = "<!-- /%s -->" % marker
 # Matched as a tag rather than as a substring so that a head-less file is not patched inside <header>.
 head_re = re.compile(r"<head[\s>]", re.IGNORECASE)
 
 changed = 0
 scanned = 0
 skipped = []
+
+
+def strip_snippet(content):
+    """Remove the injected snippet, if present.
+
+    A snippet from an earlier revision of this script has no closing marker, so it is removed up to
+    the end of its only script element. Without that, such a file would look already patched and
+    would never be upgraded.
+    """
+    start = content.find(start_tag)
+    if start == -1:
+        return content
+
+    end = content.find(end_tag, start)
+    if end != -1:
+        return content[:start] + content[end + len(end_tag):]
+
+    end = content.find("</script>", start)
+    if end == -1:
+        return content
+    return content[:start] + content[end + len("</script>"):]
+
 
 for root, _dirs, files in os.walk(web_dir):
     for name in sorted(files):
@@ -139,16 +162,13 @@ for root, _dirs, files in os.walk(web_dir):
             continue
 
         if uninstall:
-            if start_tag not in content:
+            updated = strip_snippet(content)
+            if updated == content:
                 continue
-            start = content.index(start_tag)
-            end = content.find("</script>", start)
-            if end == -1:
-                continue
-            updated = content[:start] + content[end + len("</script>"):]
         else:
-            if start_tag in content:
+            if start_tag in content and end_tag in content:
                 continue
+            content = strip_snippet(content)
             head = head_re.search(content)
             if head is None:
                 skipped.append(os.path.relpath(path, web_dir))
@@ -157,11 +177,16 @@ for root, _dirs, files in os.walk(web_dir):
             if head_end == -1:
                 skipped.append(os.path.relpath(path, web_dir))
                 continue
-            # Relative reference so the dashboard keeps working when served under a sub-path.
+            # Two references, because neither form alone survives every deployment. The dashboard
+            # routes client-side and appends the route to the page URL, so after a reload of e.g.
+            # /v3/local-agent.html/spaces/.../overview a purely relative reference resolves inside the
+            # route and 404s. The root-absolute form covers that, and the relative one covers an agent
+            # mounted under a sub-path, where the absolute form 404s instead. Whichever resolves first
+            # installs the translator; the duplicate is a no-op.
             relative_dir = os.path.relpath(root, web_dir)
             depth = 0 if relative_dir == "." else len(relative_dir.strip(os.sep).split(os.sep))
-            src = "../" * depth + "v3/" + script_name
-            snippet = '%s<script src="%s"></script>' % (start_tag, src)
+            snippet = '%s<script src="/v3/%s"></script><script src="%sv3/%s"></script>%s' % (
+                start_tag, script_name, "../" * depth, script_name, end_tag)
             updated = content[:head_end + 1] + snippet + content[head_end + 1:]
 
         changed += 1

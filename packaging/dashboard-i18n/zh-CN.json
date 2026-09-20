@@ -229,5 +229,20 @@
   "Coordinated Universal Time": "协调世界时",
   "Toggle calendar": "切换日历",
   "Select a start date": "选择开始日期",
-  "Select an end date": "选择结束日期"
+  "Select an end date": "选择结束日期",
+  "Stale": "陈旧",
+  "Offline": "离线",
+  "Stale nodes": "陈旧节点",
+  "Net In": "网络入",
+  "Net Out": "网络出",
+  "Disk Read": "磁盘读",
+  "Disk Write": "磁盘写",
+  "Visit later or check your notifications": "稍后再来，或查看你的通知",
+  "Not Capable Nodes": "不支持的节点",
+  "Not Configured Nodes": "未配置的节点",
+  "Your nodes are either offline or not configured for ML": "你的节点处于离线状态，或未启用 ML",
+  "All nodes need to be updated to a version higher than": "所有节点都需要升级到高于此版本",
+  "to support anomaly advisor": "才支持异常顾问",
+  "update to the latest Netdata version": "升级到最新的 Netdata 版本",
+  "Learn how to configure your nodes": "了解如何配置你的节点"
 }
