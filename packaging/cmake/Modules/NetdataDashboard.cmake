@@ -55,6 +55,27 @@ function(bundle_dashboard)
 
   handle_braindead_versioning_insanity("${dashboard_src_prefix}")
 
+  if(ENABLE_DASHBOARD_ZH_CN)
+    message(STATUS "  Applying Simplified Chinese dashboard localisation")
+    execute_process(
+      COMMAND bash "${CMAKE_SOURCE_DIR}/packaging/dashboard-i18n/apply-zh-cn.sh" "${dashboard_src_prefix}"
+      RESULT_VARIABLE i18n_status
+      OUTPUT_VARIABLE i18n_output
+      ERROR_VARIABLE i18n_error
+    )
+
+    # Compared as a string: when the command cannot be launched at all, CMake puts an error message
+    # rather than an exit code in the result variable.
+    if(NOT "${i18n_status}" STREQUAL "0")
+      message(FATAL_ERROR
+        "Failed to apply the Simplified Chinese dashboard localisation "
+        "(packaging/dashboard-i18n/apply-zh-cn.sh: ${i18n_status}).\n"
+        "${i18n_output}${i18n_error}\n"
+        "Re-run the build with -DENABLE_DASHBOARD_ZH_CN=OFF to skip it.")
+    endif()
+    message(STATUS "  Applying Simplified Chinese dashboard localisation -- Done")
+  endif()
+
   message(STATUS "  Generating CMakeLists.txt file for dashboard code")
   set(rules "")
 

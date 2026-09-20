@@ -217,6 +217,8 @@ endif()
 option(ENABLE_DBENGINE "Enable dbengine metrics storage" True)
 option(ENABLE_DASHBOARD "Enable local dashboard" True)
 mark_as_advanced(ENABLE_DASHBOARD)
+option(ENABLE_DASHBOARD_ZH_CN "Install the Simplified Chinese dashboard localisation" True)
+mark_as_advanced(ENABLE_DASHBOARD_ZH_CN)
 
 # Data collection plugins
 option(ENABLE_PLUGIN_GO "Enable metric collectors written in Go" ${DEFAULT_FEATURE_STATE})
