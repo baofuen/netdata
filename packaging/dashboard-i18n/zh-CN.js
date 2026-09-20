@@ -20,11 +20,12 @@
   var dictionary = null;
 
   // Text inside these elements is code or markup rather than wording. The dashboard's entry pages
-  // carry large inline scripts, so rewriting their text nodes would corrupt the page.
-  var SKIP_TAGS = { SCRIPT: true, STYLE: true, NOSCRIPT: true, IFRAME: true, TEXTAREA: true };
+  // carry large inline scripts, so rewriting their text nodes would corrupt the page. localName is
+  // used rather than tagName because foreign (SVG) elements keep their case.
+  var SKIP_TAGS = { script: true, style: true, noscript: true, iframe: true, textarea: true };
 
   function isSkipped(element) {
-    return !!(element && element.tagName && SKIP_TAGS[element.tagName]);
+    return !!(element && element.localName && SKIP_TAGS[element.localName]);
   }
 
   // Resolve the directory this script was served from, so the dictionary is found in an agent
@@ -39,6 +40,9 @@
     if (!value) return null;
     var trimmed = value.trim();
     if (!trimmed) return null;
+    // Own-property check: without it, text that happens to read "constructor" or "toString" would
+    // match Object.prototype and be replaced with a function's source.
+    if (!Object.prototype.hasOwnProperty.call(dictionary, trimmed)) return null;
     var translated = dictionary[trimmed];
     if (!translated) return null;
     // Use a function replacement so that '$' in a translation is never treated as a backreference.
@@ -85,6 +89,7 @@
 
   // React re-renders constantly, so mutations are queued and applied once per frame rather than
   // translating on every individual mutation record.
+  var DRAIN_INTERVAL_MS = 250;
   var pending = new Set();
   var scheduled = false;
 
@@ -102,8 +107,12 @@
     pending.add(target);
     if (scheduled) return;
     scheduled = true;
+    // requestAnimationFrame aligns the flush with paint, but it is suspended in a hidden tab while
+    // mutation records keep arriving, so a dashboard left open in the background would accumulate
+    // queued roots without bound. The timer drains the queue as well; flush() is idempotent, so
+    // whichever fires first wins and the other becomes a no-op.
     if (window.requestAnimationFrame) window.requestAnimationFrame(flush);
-    else setTimeout(flush, 16);
+    setTimeout(flush, DRAIN_INTERVAL_MS);
   }
 
   var observer = new MutationObserver(function (records) {

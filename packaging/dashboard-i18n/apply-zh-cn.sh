@@ -53,14 +53,18 @@ if [ ! -d "${V3_DIR}" ]; then
   exit 2
 fi
 
-if [ "${DRY_RUN}" -eq 0 ] && [ "${UNINSTALL}" -eq 0 ]; then
+# python3 is required by every mode, including --dry-run and --uninstall: it does the HTML rewriting
+# below. Checking it up front matters most for --uninstall, which must not delete anything before it
+# is known that the run can complete.
+command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; exit 2; }
+
+if [ "${UNINSTALL}" -eq 0 ]; then
   for f in "${SCRIPT_NAME}" "${DICT_NAME}"; do
     if [ ! -f "${HERE}/${f}" ]; then
       echo "error: missing ${HERE}/${f}" >&2
       exit 2
     fi
   done
-  command -v python3 >/dev/null 2>&1 || { echo "error: python3 is required" >&2; exit 2; }
 
   # A malformed dictionary does not break the dashboard, it silently disables the localisation, so
   # refuse to install one instead of shipping an English dashboard that looks applied.
@@ -72,18 +76,28 @@ except Exception as error:
     sys.exit("not valid JSON: %s" % error)
 if not isinstance(data, dict):
     sys.exit("top level is %s, expected an object" % type(data).__name__)
-bad = [k for k, v in data.items() if not isinstance(v, str)]
+bad = [k for k, v in data.items() if not isinstance(v, str) or not v]
 if bad:
-    sys.exit("values must all be strings, found: %s" % ", ".join(map(str, bad[:5])))
+    sys.exit("values must all be non-empty strings, found: %s" % ", ".join(map(str, bad[:5])))
+# A value that is also a key would be translated again on the next pass. With a cycle present that
+# never terminates, so reject chains instead of relying on the data staying acyclic by accident.
+chained = [v for v in data.values() if v in data]
+if chained:
+    sys.exit("translations must not themselves be dictionary keys, found: %s" % ", ".join(chained[:5]))
 ' "${HERE}/${DICT_NAME}"; then
-    echo "error: ${HERE}/${DICT_NAME} must be a JSON object mapping strings to strings" >&2
+    echo "error: ${HERE}/${DICT_NAME} must be a JSON object mapping strings to non-empty strings," \
+         "with no translation that is itself a key" >&2
     exit 2
   fi
 fi
 
 if [ "${UNINSTALL}" -eq 1 ]; then
-  echo "Removing localisation from ${WEB_DIR}"
-  rm -f "${V3_DIR}/${SCRIPT_NAME}" "${V3_DIR}/${DICT_NAME}"
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    echo "Would remove localisation from ${WEB_DIR}"
+  else
+    echo "Removing localisation from ${WEB_DIR}"
+    rm -f "${V3_DIR}/${SCRIPT_NAME}" "${V3_DIR}/${DICT_NAME}"
+  fi
 else
   echo "Installing localisation into ${WEB_DIR}"
   if [ "${DRY_RUN}" -eq 0 ]; then
@@ -94,6 +108,7 @@ fi
 
 python3 - "${WEB_DIR}" "${DRY_RUN}" "${UNINSTALL}" "${MARKER}" "${SCRIPT_NAME}" <<'PY'
 import os
+import re
 import sys
 
 web_dir, dry_run, uninstall, marker, script_name = (
@@ -101,9 +116,12 @@ web_dir, dry_run, uninstall, marker, script_name = (
 )
 web_dir = os.path.abspath(web_dir)
 start_tag = "<!-- %s -->" % marker
+# Matched as a tag rather than as a substring so that a head-less file is not patched inside <header>.
+head_re = re.compile(r"<head[\s>]", re.IGNORECASE)
 
 changed = 0
 scanned = 0
+skipped = []
 
 for root, _dirs, files in os.walk(web_dir):
     for name in sorted(files):
@@ -111,8 +129,14 @@ for root, _dirs, files in os.walk(web_dir):
             continue
         scanned += 1
         path = os.path.join(root, name)
-        with open(path, encoding="utf-8") as handle:
-            content = handle.read()
+        try:
+            with open(path, encoding="utf-8") as handle:
+                content = handle.read()
+        except UnicodeDecodeError:
+            # Not ours to rewrite; skipping keeps the rest of the tree patched instead of aborting
+            # half-way through the walk.
+            skipped.append(os.path.relpath(path, web_dir))
+            continue
 
         if uninstall:
             if start_tag not in content:
@@ -125,11 +149,13 @@ for root, _dirs, files in os.walk(web_dir):
         else:
             if start_tag in content:
                 continue
-            head = content.find("<head")
-            if head == -1:
+            head = head_re.search(content)
+            if head is None:
+                skipped.append(os.path.relpath(path, web_dir))
                 continue
-            head_end = content.find(">", head)
+            head_end = content.find(">", head.start())
             if head_end == -1:
+                skipped.append(os.path.relpath(path, web_dir))
                 continue
             # Relative reference so the dashboard keeps working when served under a sub-path.
             relative_dir = os.path.relpath(root, web_dir)
@@ -146,6 +172,9 @@ for root, _dirs, files in os.walk(web_dir):
 action = "would revert" if uninstall and dry_run else "reverted" if uninstall \
     else "would patch" if dry_run else "patched"
 print("%s %d of %d HTML file(s)" % (action, changed, scanned))
+if skipped:
+    print("skipped %d file(s) that are not UTF-8 text or have no <head>: %s"
+          % (len(skipped), ", ".join(skipped[:5])))
 PY
 
 echo "Done."

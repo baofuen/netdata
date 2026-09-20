@@ -23,6 +23,7 @@ rendered DOM in the browser using an exact-match dictionary.
 | `zh-CN.js` | Runtime translator. Walks text nodes and a few user-visible attributes, then keeps up with React re-renders through a `MutationObserver`. |
 | `zh-CN.json` | The dictionary: English string → Simplified Chinese. Flat, hand-editable. |
 | `apply-zh-cn.sh` | Installs both files into a dashboard web directory and references the script from every HTML entry point. Idempotent, reversible. |
+| `selftest.sh` | Asserts the properties the localisation depends on, against a throwaway dashboard tree in a temporary directory. Run it after changing any of the above. |
 
 Only strings that appear as **keys in `zh-CN.json`** are ever replaced. Anything the dictionary does
 not know is left exactly as the dashboard rendered it, so the dictionary can never corrupt code or
@@ -67,7 +68,9 @@ Add an entry to `zh-CN.json` and reload the page — there is no build step.
 
 Keys must match the string **exactly** as the dashboard renders it in a single text node, including
 capitalisation (`Sign in`, `Sign In` and `Sign-in` are three different keys in this dashboard).
-Values are substituted verbatim.
+Values are substituted verbatim. `apply-zh-cn.sh` rejects a dictionary that is not a JSON object of
+non-empty strings, or whose translations are themselves keys — the latter because a cycle between
+two entries would make the translator rewrite text forever.
 
 To find the exact wording of something you want to translate, open the browser console on the
 dashboard and inspect the element, or run:
